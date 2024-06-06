@@ -1,0 +1,91 @@
+---
+title: "Image Classification using Logistic Regression"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(jpeg)
+set.seed(9)
+```
+
+## Loading the Dataset
+
+```{r}
+pm <- read.csv("photoMetaData.csv")
+n <- nrow(pm)
+
+y <- as.numeric(pm$category == "outdoor-day")
+X <- matrix(NA, ncol=3, nrow=n)
+
+for(j in 1:n) {
+  img <- readJPEG(paste0("./columbiaImages/", pm$name[j]))
+  X[j, ] <- apply(img, 3, median)
+}
+```
+
+## Partitioning the Dataset
+
+```{r}
+training <- sample(1:800, 640)
+
+X_train <- X[training,]
+y_train <- y[training]
+
+X_test <- X[-training,]
+y_test <- y[-training]
+```
+
+## Performing Logistic Regression on the Training Set
+
+```{r}
+model <- glm(y_train ~ X_train, family=binomial)
+summary(model)
+```
+
+## Sensitivity, Specificity and Accuracy
+
+```{r}
+predictions <- 1 / (1 + exp(-1 * cbind(1,X_test) %*% coef(model)))
+predictions_class <- as.numeric(predictions >= 0.5)
+
+true_positive <- sum(predictions_class == 1 & y_test == 1)
+true_negative <- sum(predictions_class == 0 & y_test == 0)
+
+sensitivity <- true_positive / sum(y_test == 1)
+specificity <- true_negative / sum(y_test == 0)
+accuracy <- (true_positive + true_negative) / length(y_test)
+
+sprintf("Sensitivity: %s, Specificity: %s, Accuracy: %s", sensitivity, specificity, accuracy)
+```
+
+## ROC Curve
+
+```{r}
+roc <- function(y, pred) {
+  alpha <- quantile(pred, seq(0, 1, by=0.01))
+  N <- length(alpha)
+  
+  sens <- rep(NA,N)
+  spec <- rep(NA,N)
+  
+  for(i in 1:N) {
+    pred_class <- as.numeric(pred >= alpha[i])
+    sens[i] <- sum(pred_class == 1 & y == 1) / sum(y == 1)
+    spec[i] <- sum(pred_class == 0 & y == 0) / sum(y == 0)
+  }
+  
+  return(list(fpr=1-spec, tpr=sens))
+}
+
+roc <- roc(y_test, predictions)
+
+plot(roc$fpr,
+     roc$tpr,
+     main="ROC Curve",
+     xlab="False Positive Rate",
+     ylab="True Positive Rate",
+     type="l")
+
+abline(0, 1, lty="dashed")
+```
